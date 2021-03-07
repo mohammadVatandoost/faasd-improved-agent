@@ -51,13 +51,17 @@ var mutex sync.Mutex
 // SayHello implements helloworld.GreeterServer
 func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskResponse, error) {
 	log.Printf("Received: %v", in.FunctionName)
-	sReqHash := hash( append([]byte(in.FunctionName), in.SerializeReq...))
-	mutex.Lock()
-	res, found := Cache.Get(sReqHash)
-	mutex.Unlock()
-	if found {
-		return &pb.TaskResponse{Message: "OK", Response: res.([]byte)}, nil
-	}
+	// sReqHash := hash( append([]byte(in.FunctionName), in.SerializeReq...))
+
+    // ******** cache
+	// mutex.Lock()
+	// res, found := Cache.Get(sReqHash)
+	// mutex.Unlock()
+	// if found {
+	// 	return &pb.TaskResponse{Message: "OK", Response: res.([]byte)}, nil
+	// }
+
+
 	faasConfig, providerConfig, err := config.ReadFromEnv(types.OsEnv{})
 	if err != nil {
 		log.Printf("failed to ReadFromEnv: %v", err)
@@ -120,9 +124,12 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		log.Printf("error in serializing response: %s \n", err)
 		return nil, err
 	}
-	mutex.Lock()
-	Cache.Add(sReqHash, sRes)
-	mutex.Unlock()
+
+	// *************** cache
+	// mutex.Lock()
+	// Cache.Add(sReqHash, sRes)
+	// mutex.Unlock()
+
 	//log.Printf("Mohammad function name: %s, result: %s \n",in.FunctionName, bodyString)
 	log.Printf("Mohammad %s took %f seconds\n", in.FunctionName, seconds.Seconds())
 

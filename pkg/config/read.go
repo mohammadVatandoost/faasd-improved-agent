@@ -23,7 +23,7 @@ func ReadFromEnv(hasEnv types.HasEnv) (*types.FaaSConfig, *ProviderConfig, error
 	config.EnableHealth = true
 	config.ReadTimeout = serviceTimeout
 	config.WriteTimeout = serviceTimeout
-
+    
 	port := types.ParseIntValue(hasEnv.Getenv("port"), 8081)
 	config.TCPPort = &port
 
