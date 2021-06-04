@@ -31,6 +31,7 @@ import (
 
 	"faasd-agent/pkg/httputil"
 	"faasd-agent/pkg/types"
+
 	"github.com/gorilla/mux"
 )
 
@@ -115,14 +116,14 @@ func NewProxyClient(timeout time.Duration, maxIdleConns int, maxIdleConnsPerHost
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   timeout,
-				KeepAlive: 1 * time.Second,
+				KeepAlive: 15 * time.Second,
 				DualStack: true,
 			}).DialContext,
 			MaxIdleConns:          maxIdleConns,
 			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
-			IdleConnTimeout:       120 * time.Millisecond,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1500 * time.Millisecond,
+			IdleConnTimeout:       1200 * time.Millisecond,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ExpectContinueTimeout: 5500 * time.Millisecond,
 		},
 		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -175,7 +176,7 @@ func ProxyRequest(w http.ResponseWriter, originalReq *http.Request, proxyClient 
 		log.Fatal(err)
 	}
 	bodyString := string(bodyBytes)
-	log.Printf("Mohammad function name: %s, result: %s \n",functionName, bodyString)
+	log.Printf("Mohammad function name: %s, result: %s \n", functionName, bodyString)
 	log.Printf("Mohammad %s took %f seconds\n", functionName, seconds.Seconds())
 
 	clientHeader := w.Header()
@@ -207,7 +208,6 @@ func BuildProxyRequest(originalReq *http.Request, baseURL url.URL, extraPath str
 		return nil, err
 	}
 	copyHeaders(upstreamReq.Header, &originalReq.Header)
-	
 
 	if len(originalReq.Host) > 0 && upstreamReq.Header.Get("X-Forwarded-Host") == "" {
 		upstreamReq.Header["X-Forwarded-Host"] = []string{originalReq.Host}

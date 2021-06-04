@@ -8,26 +8,29 @@ import (
 	"encoding/hex"
 	"faasd-agent/pkg/handlers"
 	"faasd-agent/pkg/proxy"
-	lru "github.com/hashicorp/golang-lru"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
+
 	"faasd-agent/pkg/config"
 	"faasd-agent/pkg/types"
 	pb "faasd-agent/proto/agent"
-	"github.com/containerd/containerd"
-	"google.golang.org/grpc"
 	"log"
 	"net"
+
+	"github.com/containerd/containerd"
+	"google.golang.org/grpc"
 )
 
 const (
-	port = ":50051"
-	MaxCacheItem = 10
+	port         = ":50051"
+	MaxCacheItem = 8
+	UseCache     = true
 )
-
 
 type Function struct {
 	name        string
@@ -47,27 +50,48 @@ type server struct {
 
 var Cache *lru.Cache
 var mutex sync.Mutex
+var cacheHit uint
+var cacheMiss uint
 
 // SayHello implements helloworld.GreeterServer
 func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskResponse, error) {
 	log.Printf("Received: %v", in.FunctionName)
-	// sReqHash := hash( append([]byte(in.FunctionName), in.SerializeReq...))
 
-    // ******** cache
-	// mutex.Lock()
-	// res, found := Cache.Get(sReqHash)
-	// mutex.Unlock()
-	// if found {
-	// 	return &pb.TaskResponse{Message: "OK", Response: res.([]byte)}, nil
-	// }
+	var sReqHash string
 
+	req, err := unserializeReq(in.SerializeReq)
+	if err != nil {
+		log.Printf("failed unserializeReq:  %s: %s\n", in.FunctionName, err.Error())
+		return nil, err
+	}
+
+	// ******** cache
+	// ToDo: count cache hit
+	if UseCache {
+		bodyBytes, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			log.Println("read request bodey error :", err.Error())
+		}
+		req.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+		sReqHash = hash(append([]byte(in.FunctionName), bodyBytes...))
+		mutex.Lock()
+		res, found := Cache.Get(sReqHash)
+		if found {
+			cacheHit++
+			mutex.Unlock()
+			log.Printf("Found in cache: %v, cacheHit: %v", in.FunctionName, cacheHit)
+			return &pb.TaskResponse{Message: "OK", Response: res.([]byte)}, nil
+		}
+
+		mutex.Unlock()
+	}
 
 	faasConfig, providerConfig, err := config.ReadFromEnv(types.OsEnv{})
 	if err != nil {
 		log.Printf("failed to ReadFromEnv: %v", err)
 		return nil, err
 	}
-
+	// log.Printf("Containerd socket: %v", providerConfig.Sock)
 	client, err := containerd.New(providerConfig.Sock)
 	if err != nil {
 		log.Printf("failed containerd.New:  %s: %s\n", in.FunctionName, err.Error())
@@ -84,59 +108,70 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		return nil, resolveErr
 	}
 
-	proxyClient := proxy.NewProxyClientFromConfig(*faasConfig)
+	tryCounter := 0
+	var sRes []byte
+	var seconds time.Duration
+	for {
+		proxyClient := proxy.NewProxyClientFromConfig(*faasConfig)
 
-	req, err := unserializeReq(in.SerializeReq)
-	if err != nil {
-		log.Printf("failed unserializeReq:  %s: %s\n", in.FunctionName, err.Error())
-		return nil, err
-	}
+		proxyReq, err := proxy.BuildProxyRequest(req, functionAddr, in.ExteraPath)
+		if err != nil {
+			log.Printf("failed proxyReq:  %s: %s\n", in.FunctionName, err.Error())
+			return nil, err
+		}
+		if proxyReq.Body != nil {
+			defer proxyReq.Body.Close()
+		}
 
-	proxyReq, err := proxy.BuildProxyRequest(req, functionAddr, in.ExteraPath)
-	if err != nil {
-		log.Printf("failed proxyReq:  %s: %s\n", in.FunctionName, err.Error())
-		return nil, err
-	}
-	if proxyReq.Body != nil {
-		defer proxyReq.Body.Close()
-	}
+		start := time.Now()
+		response, err := proxyClient.Do(proxyReq.WithContext(ctx))
+		seconds = time.Since(start)
 
-	start := time.Now()
-	response, err := proxyClient.Do(proxyReq.WithContext(ctx))
-	seconds := time.Since(start)
+		if err != nil {
+			log.Printf("error with proxy %s request to: %s, %s\n", in.FunctionName, proxyReq.URL.String(), err.Error())
+			tryCounter++
+			if tryCounter > 2 {
+				log.Printf("****** Second TIme error with proxy %s request to: %s, %s\n", in.FunctionName, proxyReq.URL.String(), err.Error())
+				return nil, err
+			}
+			// defer response.Body.Close()
+			continue
+		}
+		defer response.Body.Close()
+		//bodyBytes, err := ioutil.ReadAll(response.Body)
+		//if err != nil {
+		//	log.Printf("error in reading response body: %s \n", err)
+		//	return nil, err
+		//}
+		//
+		//bodyString := string(bodyBytes)
 
-	if err != nil {
-		log.Printf("error with proxy request to: %s, %s\n", proxyReq.URL.String(), err.Error())
-
-		return nil, err
-	}
-	defer response.Body.Close()
-	//bodyBytes, err := ioutil.ReadAll(response.Body)
-	//if err != nil {
-	//	log.Printf("error in reading response body: %s \n", err)
-	//	return nil, err
-	//}
-	//
-	//bodyString := string(bodyBytes)
-
-	sRes, err :=captureRequestData(response)
-	if err != nil {
-		log.Printf("error in serializing response: %s \n", err)
-		return nil, err
+		sRes, err = captureRequestData(response)
+		if err != nil {
+			log.Printf("error in serializing response: %s \n", err)
+			return nil, err
+		}
+		break
 	}
 
 	// *************** cache
-	// mutex.Lock()
-	// Cache.Add(sReqHash, sRes)
-	// mutex.Unlock()
-
+	if UseCache {
+		mutex.Lock()
+		Cache.Add(sReqHash, sRes)
+		mutex.Unlock()
+	}
+	cacheMiss++
 	//log.Printf("Mohammad function name: %s, result: %s \n",in.FunctionName, bodyString)
-	log.Printf("Mohammad %s took %f seconds\n", in.FunctionName, seconds.Seconds())
+	log.Printf("Mohammad %s took %f seconds, sRes length: %v, cacheMiss : %v, sReqHash : %v \n", in.FunctionName,
+		seconds.Seconds(), len(sRes), cacheMiss, sReqHash)
 
 	return &pb.TaskResponse{Message: "OK", Response: sRes}, nil
 }
 
 func main() {
+	cacheHit = 0
+	cacheMiss = 0
+
 	if len(os.Args) < 2 {
 		log.Fatalf("Provid port nummber")
 	}
@@ -153,7 +188,7 @@ func main() {
 	}
 }
 
-func unserializeReq(sReq [] byte) (*http.Request, error)  {
+func unserializeReq(sReq []byte) (*http.Request, error) {
 	b := bytes.NewBuffer(sReq)
 	r := bufio.NewReader(b)
 	req, err := http.ReadRequest(r)
@@ -168,7 +203,7 @@ func captureRequestData(res *http.Response) ([]byte, error) {
 	//var tmp *http.Request
 	var err error
 	if err = res.Write(b); err != nil { // serialize request to HTTP/1.1 wire format
-		return nil,err
+		return nil, err
 	}
 	//var reqSerialize []byte
 
@@ -186,4 +221,3 @@ func hash(data []byte) string {
 	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
 }
-
