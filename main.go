@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"faasd-agent/pkg/handlers"
 	"faasd-agent/pkg/proxy"
-	"github.com/containerd/typeurl"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -167,9 +166,8 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 	log.Printf("Mohammad %s took %f seconds, sRes length: %v, cacheMiss : %v, sReqHash : %v \n", in.FunctionName,
 		seconds.Seconds(), len(sRes), cacheMiss, sReqHash)
 	for metric := range function.MetricChannel {
-		anydata, err := typeurl.UnmarshalAny(metric.Data)
+		err := printMetricData(metric)
 		if err != nil {
-			log.Printf("can not unmarshad metric data, err: %s \n", err.Error())
 			continue
 		}
 	}
