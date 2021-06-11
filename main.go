@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"faasd-agent/pkg/handlers"
 	"faasd-agent/pkg/proxy"
+	"github.com/containerd/typeurl"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -66,7 +67,6 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 	}
 
 	// ******** cache
-	// ToDo: count cache hit
 	if UseCache {
 		bodyBytes, err := ioutil.ReadAll(req.Body)
 		if err != nil {
@@ -101,7 +101,7 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 
 	invokeResolver := handlers.NewInvokeResolver(client)
 
-	functionAddr, resolveErr := invokeResolver.Resolve(in.FunctionName)
+	functionAddr, function, resolveErr := invokeResolver.Resolve(in.FunctionName)
 	if resolveErr != nil {
 		// TODO: Should record the 404/not found error in Prometheus.
 		log.Printf("resolver error: cannot find %s: %s\n", in.FunctionName, resolveErr.Error())
@@ -151,6 +151,8 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 			log.Printf("error in serializing response: %s \n", err)
 			return nil, err
 		}
+
+
 		break
 	}
 
@@ -164,7 +166,13 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 	//log.Printf("Mohammad function name: %s, result: %s \n",in.FunctionName, bodyString)
 	log.Printf("Mohammad %s took %f seconds, sRes length: %v, cacheMiss : %v, sReqHash : %v \n", in.FunctionName,
 		seconds.Seconds(), len(sRes), cacheMiss, sReqHash)
-
+	for metric := range function.MetricChannel {
+		anydata, err := typeurl.UnmarshalAny(metric.Data)
+		if err != nil {
+			log.Printf("can not unmarshad metric data, err: %s \n", err.Error())
+			continue
+		}
+	}
 	return &pb.TaskResponse{Message: "OK", Response: sRes}, nil
 }
 

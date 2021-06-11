@@ -18,12 +18,12 @@ func NewInvokeResolver(client *containerd.Client) *InvokeResolver {
 	return &InvokeResolver{client: client}
 }
 
-func (i *InvokeResolver) Resolve(functionName string) (url.URL, error) {
+func (i *InvokeResolver) Resolve(functionName string) (url.URL, Function, error) {
 	// log.Printf("Function handler Resolve: %q\n", functionName)
 
 	function, err := GetFunction(i.client, functionName)
 	if err != nil {
-		return url.URL{}, fmt.Errorf("%s not found", functionName)
+		return url.URL{}, Function{}, fmt.Errorf("%s not found", functionName)
 	}
 
 	serviceIP := function.IP
@@ -32,8 +32,8 @@ func (i *InvokeResolver) Resolve(functionName string) (url.URL, error) {
 
 	urlRes, err := url.Parse(urlStr)
 	if err != nil {
-		return url.URL{}, err
+		return url.URL{}, Function{}, err
 	}
 
-	return *urlRes, nil
+	return *urlRes, function, nil
 }

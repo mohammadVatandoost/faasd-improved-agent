@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"github.com/containerd/containerd/api/types"
 	"log"
 	"strings"
+	"time"
 
 	"faasd-agent/pkg/cninetwork"
 	"github.com/containerd/containerd"
@@ -35,6 +37,7 @@ type Function struct {
 	IP          string
 	labels      map[string]string
 	annotations map[string]string
+	MetricChannel chan *types.Metric
 }
 
 // ListFunctions returns a map of all functions with running tasks on namespace
@@ -93,6 +96,7 @@ func GetFunction(client *containerd.Client, name string) (Function, error) {
 
 	replicas := 0
 	task, err := c.Task(ctx, nil)
+
 	if err == nil {
 		// Task for container exists
 		svc, err := task.Status(ctx)
@@ -100,6 +104,20 @@ func GetFunction(client *containerd.Client, name string) (Function, error) {
 			return Function{}, fmt.Errorf("unable to get task status for container: %s %s", name, err)
 		}
 
+		metricChannel := make(chan *types.Metric, 10)
+		go func() {
+			for {
+				metrics, err := task.Metrics(ctx)
+				if err != nil {
+					log.Printf("can not get function metric, err:  %s \n", err.Error())
+					break
+				}
+				metricChannel <- metrics
+				time.Sleep(10*time.Millisecond)
+			}
+
+		}()
+		fn.MetricChannel = metricChannel
 		if svc.Status == "running" {
 			replicas = 1
 			fn.pid = task.Pid()
@@ -111,6 +129,7 @@ func GetFunction(client *containerd.Client, name string) (Function, error) {
 			}
 			//log.Println("Function container task run successfully, container ip: "+ ip.String())
 			fn.IP = ip.String()
+			//cninetwork.
 		}
 	} else {
 		replicas = 0
