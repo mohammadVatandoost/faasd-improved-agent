@@ -115,6 +115,7 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 
 		proxyReq, err := proxy.BuildProxyRequest(req, functionAddr, in.ExteraPath)
 		if err != nil {
+			function.CloseChannel <- struct{}{}
 			log.Printf("failed proxyReq:  %s: %s\n", in.FunctionName, err.Error())
 			return nil, err
 		}
@@ -125,7 +126,7 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		start := time.Now()
 		response, err := proxyClient.Do(proxyReq.WithContext(ctx))
 		seconds = time.Since(start)
-
+		function.CloseChannel <- struct{}{}
 		if err != nil {
 			log.Printf("error with proxy %s request to: %s, %s\n", in.FunctionName, proxyReq.URL.String(), err.Error())
 			tryCounter++

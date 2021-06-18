@@ -38,6 +38,7 @@ type Function struct {
 	labels      map[string]string
 	annotations map[string]string
 	MetricChannel chan *types.Metric
+	CloseChannel chan struct{}
 }
 
 // ListFunctions returns a map of all functions with running tasks on namespace
@@ -105,19 +106,40 @@ func GetFunction(client *containerd.Client, name string) (Function, error) {
 		}
 
 		metricChannel := make(chan *types.Metric, 10)
+		closeChannel := make(chan struct{})
 		go func() {
+			taskName := containerName
+			time.Sleep(5*time.Millisecond)
+			ctx := namespaces.WithNamespace(context.Background(), FunctionNamespace)
 			for {
-				metrics, err := task.Metrics(ctx)
-				if err != nil {
-					log.Printf("can not get function metric, err:  %s \n", err.Error())
-					break
+				select {
+				case <-closeChannel:
+					log.Printf("Task %s finished", taskName)
+					return
+				default:
+					metrics, err := task.Metrics(ctx)
+					if err != nil {
+						log.Printf("can not get function metric, err:  %s \n", err.Error())
+						return
+					}
+					metricChannel <- metrics
+
+					//svc, err := task.Status(ctx)
+					//if err != nil {
+					//	log.Printf("can not get task status, err:  %s \n", err.Error())
+					//	break
+					//}
+					//if svc.Status != "running" {
+					//	log.Printf("task is not running, Status:  %s \n", svc.Status)
+					//	break
+					//}
 				}
-				metricChannel <- metrics
 				time.Sleep(10*time.Millisecond)
 			}
 
 		}()
 		fn.MetricChannel = metricChannel
+		fn.CloseChannel = closeChannel
 		if svc.Status == "running" {
 			replicas = 1
 			fn.pid = task.Pid()

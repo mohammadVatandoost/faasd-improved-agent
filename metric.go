@@ -1,8 +1,7 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
+
 	"errors"
 	"fmt"
 	wstats "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/stats"
