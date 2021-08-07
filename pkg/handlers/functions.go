@@ -3,12 +3,13 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"github.com/containerd/containerd/api/types"
 	"log"
 	"strings"
-	"time"
+
+	"github.com/containerd/containerd/api/types"
 
 	"faasd-agent/pkg/cninetwork"
+
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/namespaces"
 )
@@ -23,22 +24,21 @@ const (
 	faasdNamespace = "openfaas"
 
 	faasServicesPullAlways = false
-	annotationLabelPrefix = "com.openfaas.annotations."
-	defaultSnapshotter = "overlayfs"
+	annotationLabelPrefix  = "com.openfaas.annotations."
+	defaultSnapshotter     = "overlayfs"
 )
 
-
 type Function struct {
-	name        string
-	namespace   string
-	image       string
-	pid         uint32
-	replicas    int
-	IP          string
-	labels      map[string]string
-	annotations map[string]string
+	name          string
+	namespace     string
+	image         string
+	pid           uint32
+	replicas      int
+	IP            string
+	labels        map[string]string
+	annotations   map[string]string
 	MetricChannel chan *types.Metric
-	CloseChannel chan struct{}
+	CloseChannel  chan struct{}
 }
 
 // ListFunctions returns a map of all functions with running tasks on namespace
@@ -74,7 +74,7 @@ func GetFunction(client *containerd.Client, name string) (Function, error) {
 		return Function{}, fmt.Errorf("unable to find function: %s, error %s", name, err)
 	}
 
-    //log.Println("Load function container successfully, name: "+ name)
+	//log.Println("Load function container successfully, name: "+ name)
 	image, err := c.Image(ctx)
 	if err != nil {
 		return fn, err
@@ -107,37 +107,39 @@ func GetFunction(client *containerd.Client, name string) (Function, error) {
 
 		metricChannel := make(chan *types.Metric, 10)
 		closeChannel := make(chan struct{})
-		go func() {
-			taskName := containerName
-			time.Sleep(5*time.Millisecond)
-			ctx := namespaces.WithNamespace(context.Background(), FunctionNamespace)
-			for {
-				select {
-				case <-closeChannel:
-					log.Printf("Task %s finished", taskName)
-					return
-				default:
-					metrics, err := task.Metrics(ctx)
-					if err != nil {
-						log.Printf("can not get function metric, err:  %s \n", err.Error())
-						return
-					}
-					metricChannel <- metrics
 
-					//svc, err := task.Status(ctx)
-					//if err != nil {
-					//	log.Printf("can not get task status, err:  %s \n", err.Error())
-					//	break
-					//}
-					//if svc.Status != "running" {
-					//	log.Printf("task is not running, Status:  %s \n", svc.Status)
-					//	break
-					//}
-				}
-				time.Sleep(10*time.Millisecond)
-			}
+		// go func() {
+		// 	taskName := containerName
+		// 	time.Sleep(5*time.Millisecond)
+		// 	ctx := namespaces.WithNamespace(context.Background(), FunctionNamespace)
+		// 	for {
+		// 		select {
+		// 		case <-closeChannel:
+		// 			log.Printf("Task %s finished", taskName)
+		// 			return
+		// 		default:
+		// 			metrics, err := task.Metrics(ctx)
+		// 			if err != nil {
+		// 				log.Printf("can not get function metric, err:  %s \n", err.Error())
+		// 				return
+		// 			}
+		// 			metricChannel <- metrics
 
-		}()
+		// 			//svc, err := task.Status(ctx)
+		// 			//if err != nil {
+		// 			//	log.Printf("can not get task status, err:  %s \n", err.Error())
+		// 			//	break
+		// 			//}
+		// 			//if svc.Status != "running" {
+		// 			//	log.Printf("task is not running, Status:  %s \n", svc.Status)
+		// 			//	break
+		// 			//}
+		// 		}
+		// 		time.Sleep(10*time.Millisecond)
+		// 	}
+
+		// }()
+
 		fn.MetricChannel = metricChannel
 		fn.CloseChannel = closeChannel
 		if svc.Status == "running" {
