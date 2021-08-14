@@ -100,7 +100,7 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 
 	invokeResolver := handlers.NewInvokeResolver(client)
 
-	functionAddr, function, resolveErr := invokeResolver.Resolve(in.FunctionName)
+	functionAddr, _, resolveErr := invokeResolver.Resolve(in.FunctionName)
 	if resolveErr != nil {
 		// TODO: Should record the 404/not found error in Prometheus.
 		log.Printf("resolver error: cannot find %s: %s\n", in.FunctionName, resolveErr.Error())
@@ -115,7 +115,7 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 
 		proxyReq, err := proxy.BuildProxyRequest(req, functionAddr, in.ExteraPath)
 		if err != nil {
-			function.CloseChannel <- struct{}{}
+			// function.CloseChannel <- struct{}{}
 			log.Printf("failed proxyReq:  %s: %s\n", in.FunctionName, err.Error())
 			return nil, err
 		}
@@ -126,7 +126,7 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		start := time.Now()
 		response, err := proxyClient.Do(proxyReq.WithContext(ctx))
 		seconds = time.Since(start)
-		function.CloseChannel <- struct{}{}
+		// function.CloseChannel <- struct{}{}
 		if err != nil {
 			log.Printf("error with proxy %s request to: %s, %s\n", in.FunctionName, proxyReq.URL.String(), err.Error())
 			tryCounter++
@@ -152,7 +152,6 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 			return nil, err
 		}
 
-
 		break
 	}
 
@@ -166,12 +165,12 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 	//log.Printf("Mohammad function name: %s, result: %s \n",in.FunctionName, bodyString)
 	log.Printf("Mohammad %s took %f seconds, sRes length: %v, cacheMiss : %v, sReqHash : %v \n", in.FunctionName,
 		seconds.Seconds(), len(sRes), cacheMiss, sReqHash)
-	for metric := range function.MetricChannel {
-		err := printMetricData(metric)
-		if err != nil {
-			continue
-		}
-	}
+	// for metric := range function.MetricChannel {
+	// 	err := printMetricData(metric)
+	// 	if err != nil {
+	// 		continue
+	// 	}
+	// }
 	return &pb.TaskResponse{Message: "OK", Response: sRes}, nil
 }
 

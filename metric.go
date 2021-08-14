@@ -1,17 +1,12 @@
 package main
 
 import (
-
-	"errors"
 	"fmt"
+	"text/tabwriter"
+
 	wstats "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/stats"
 	v1 "github.com/containerd/cgroups/stats/v1"
-	"github.com/containerd/containerd/api/types"
 	v2 "github.com/containerd/containerd/metrics/types/v2"
-	"github.com/containerd/typeurl"
-	"log"
-	"os"
-	"text/tabwriter"
 )
 
 const (
@@ -20,61 +15,61 @@ const (
 	formatJSON  = "json"
 )
 
-func printMetricData(metric *types.Metric) error  {
-	var (
-		data         *v1.Metrics
-		data2        *v2.Metrics
-		windowsStats *wstats.Statistics
-	)
-	anydata, err := typeurl.UnmarshalAny(metric.Data)
-	if err != nil {
-		log.Printf("can not unmarshad metric data, err: %s \n", err.Error())
-		return err
-	}
-	switch v := anydata.(type) {
-	case *v1.Metrics:
-		data = v
-	case *v2.Metrics:
-		data2 = v
-	case *wstats.Statistics:
-		windowsStats = v
-	default:
-		return errors.New("cannot convert metric data to cgroups.Metrics or windows.Statistics")
-	}
+// func printMetricData(metric *types.Metric) error  {
+// 	var (
+// 		data         *v1.Metrics
+// 		data2        *v2.Metrics
+// 		windowsStats *wstats.Statistics
+// 	)
+// 	anydata, err := typeurl.UnmarshalAny(metric.Data)
+// 	if err != nil {
+// 		log.Printf("can not unmarshad metric data, err: %s \n", err.Error())
+// 		return err
+// 	}
+// 	switch v := anydata.(type) {
+// 	case *v1.Metrics:
+// 		data = v
+// 	case *v2.Metrics:
+// 		data2 = v
+// 	case *wstats.Statistics:
+// 		windowsStats = v
+// 	default:
+// 		return errors.New("cannot convert metric data to cgroups.Metrics or windows.Statistics")
+// 	}
 
-	//switch context.String(formatFlag) {
-	//case formatTable:
-		w := tabwriter.NewWriter(os.Stdout, 1, 8, 4, ' ', 0)
-		fmt.Fprintf(w, "ID\tTIMESTAMP\t\n")
-		fmt.Fprintf(w, "%s\t%s\t\n\n", metric.ID, metric.Timestamp)
-		if data != nil {
-			printCgroupMetricsTable(w, data)
-		} else if data2 != nil {
-			printCgroup2MetricsTable(w, data2)
-		} else {
-			if windowsStats.GetLinux() != nil {
-				printCgroupMetricsTable(w, windowsStats.GetLinux())
-			} else if windowsStats.GetWindows() != nil {
-				printWindowsContainerStatistics(w, windowsStats.GetWindows())
-			}
-			// Print VM stats if its isolated
-			if windowsStats.VM != nil {
-				printWindowsVMStatistics(w, windowsStats.VM)
-			}
-		}
-		return w.Flush()
-	//case formatJSON:
-	//	marshaledJSON, err := json.MarshalIndent(anydata, "", "  ")
-	//	if err != nil {
-	//		return err
-	//	}
-	//	fmt.Println(string(marshaledJSON))
-	//	return nil
-	//default:
-	//	return errors.New("format must be table or json")
-	//}
+// 	//switch context.String(formatFlag) {
+// 	//case formatTable:
+// 		w := tabwriter.NewWriter(os.Stdout, 1, 8, 4, ' ', 0)
+// 		fmt.Fprintf(w, "ID\tTIMESTAMP\t\n")
+// 		fmt.Fprintf(w, "%s\t%s\t\n\n", metric.ID, metric.Timestamp)
+// 		if data != nil {
+// 			printCgroupMetricsTable(w, data)
+// 		} else if data2 != nil {
+// 			printCgroup2MetricsTable(w, data2)
+// 		} else {
+// 			if windowsStats.GetLinux() != nil {
+// 				printCgroupMetricsTable(w, windowsStats.GetLinux())
+// 			} else if windowsStats.GetWindows() != nil {
+// 				printWindowsContainerStatistics(w, windowsStats.GetWindows())
+// 			}
+// 			// Print VM stats if its isolated
+// 			if windowsStats.VM != nil {
+// 				printWindowsVMStatistics(w, windowsStats.VM)
+// 			}
+// 		}
+// 		return w.Flush()
+// 	//case formatJSON:
+// 	//	marshaledJSON, err := json.MarshalIndent(anydata, "", "  ")
+// 	//	if err != nil {
+// 	//		return err
+// 	//	}
+// 	//	fmt.Println(string(marshaledJSON))
+// 	//	return nil
+// 	//default:
+// 	//	return errors.New("format must be table or json")
+// 	//}
 
-}
+// }
 
 func printCgroupMetricsTable(w *tabwriter.Writer, data *v1.Metrics) {
 	fmt.Fprintf(w, "METRIC\tVALUE\t\n")
@@ -155,4 +150,3 @@ func printWindowsVMStatistics(w *tabwriter.Writer, stats *wstats.VirtualMachineS
 		fmt.Fprintf(w, "vm.memory.dm_operation_in_progress\t%t\t\n", stats.Memory.VmMemory.DmOperationInProgress)
 	}
 }
-
