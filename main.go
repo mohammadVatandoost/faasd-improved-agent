@@ -27,9 +27,10 @@ import (
 )
 
 const (
-	port         = ":50051"
-	MaxCacheItem = 8
-	UseCache     = true
+	port                 = ":50051"
+	MaxCacheItem         = 8
+	UseCache             = true
+	SupportCacheChecking = true
 )
 
 type Function struct {
@@ -55,8 +56,22 @@ var cacheMiss uint
 
 // SayHello implements helloworld.GreeterServer
 func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskResponse, error) {
-	log.Printf("Received: %v", in.FunctionName)
 
+	if len(in.RequestHashes) > 0 {
+		res := &pb.TaskResponse{Message: "OK", Responses: make([][]byte, len(in.RequestHashes))}
+		if SupportCacheChecking {
+			log.Printf("New Task checking cache, len(requests): %v", len(in.RequestHashes))
+			for i, reqHash := range in.RequestHashes {
+				value, found := Cache.Get(reqHash)
+				if found {
+					res.Responses[i] = value.([]byte)
+				}
+			}
+			return res, nil
+		}
+
+	}
+	log.Printf("New Task Received: %v", in.FunctionName)
 	var sReqHash string
 
 	req, err := unserializeReq(in.SerializeReq)
@@ -182,11 +197,13 @@ func main() {
 		log.Fatalf("Provid port nummber")
 	}
 	Cache, _ = lru.New(MaxCacheItem)
-	// port
 	lis, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+
+	RunProxy(os.Args[2])
+
 	s := grpc.NewServer()
 	pb.RegisterTasksRequestServer(s, &server{})
 	if err := s.Serve(lis); err != nil {

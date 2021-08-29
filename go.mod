@@ -14,6 +14,8 @@ require (
 	github.com/containerd/go-runc v0.0.0-20201020171139-16b287bc67d0 // indirect
 	github.com/containerd/ttrpc v1.0.2 // indirect
 	github.com/containerd/typeurl v1.0.1
+	github.com/fanap-infra/log v1.6.1
+	github.com/gin-gonic/gin v1.7.4
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.4.3

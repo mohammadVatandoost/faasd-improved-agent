@@ -4,12 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"path"
-	"path/filepath"
 
 	"github.com/containerd/containerd"
 	gocni "github.com/containerd/go-cni"
@@ -37,61 +34,61 @@ const (
 )
 
 // defaultCNIConf is a CNI configuration that enables network access to containers (docker-bridge style)
-var defaultCNIConf = fmt.Sprintf(`
-{
-    "cniVersion": "0.4.0",
-    "name": "%s",
-    "plugins": [
-      {
-        "type": "bridge",
-        "bridge": "%s",
-        "isGateway": true,
-        "ipMasq": true,
-        "ipam": {
-            "type": "host-local",
-            "subnet": "%s",
-            "routes": [
-                { "dst": "0.0.0.0/0" }
-            ]
-        }
-      },
-      {
-        "type": "firewall"
-      }
-    ]
-}
-`, defaultNetworkName, defaultBridgeName, defaultSubnet)
+// var defaultCNIConf = fmt.Sprintf(`
+// {
+//     "cniVersion": "0.4.0",
+//     "name": "%s",
+//     "plugins": [
+//       {
+//         "type": "bridge",
+//         "bridge": "%s",
+//         "isGateway": true,
+//         "ipMasq": true,
+//         "ipam": {
+//             "type": "host-local",
+//             "subnet": "%s",
+//             "routes": [
+//                 { "dst": "0.0.0.0/0" }
+//             ]
+//         }
+//       },
+//       {
+//         "type": "firewall"
+//       }
+//     ]
+// }
+// `, defaultNetworkName, defaultBridgeName, defaultSubnet)
 
-// InitNetwork writes configlist file and initializes CNI network
-func InitNetwork() (gocni.CNI, error) {
+// // InitNetwork writes configlist file and initializes CNI network
+// func InitNetwork() (gocni.CNI, error) {
 
-	log.Printf("Writing network config...\n")
-	if !dirExists(CNIConfDir) {
-		if err := os.MkdirAll(CNIConfDir, 0755); err != nil {
-			return nil, fmt.Errorf("cannot create directory: %s", CNIConfDir)
-		}
-	}
+// 	log.Printf("Writing network config...\n")
+// 	if !dirExists(CNIConfDir) {
+// 		if err := os.MkdirAll(CNIConfDir, 0755); err != nil {
+// 			return nil, fmt.Errorf("cannot create directory: %s", CNIConfDir)
+// 		}
+// 	}
 
-	netConfig := path.Join(CNIConfDir, defaultCNIConfFilename)
-	if err := ioutil.WriteFile(netConfig, []byte(defaultCNIConf), 644); err != nil {
-		return nil, fmt.Errorf("cannot write network config: %s", defaultCNIConfFilename)
+// 	netConfig := path.Join(CNIConfDir, defaultCNIConfFilename)
+// 	if err := ioutil.WriteFile(netConfig, []byte(defaultCNIConf), 644); err != nil {
+// 		return nil, fmt.Errorf("cannot write network config: %s", defaultCNIConfFilename)
 
-	}
-	// Initialize CNI library
-	cni, err := gocni.New(gocni.WithPluginConfDir(CNIConfDir),
-		gocni.WithPluginDir([]string{CNIBinDir}))
+// 	}
+// 	// Initialize CNI library
+// 	cni, err := gocni.New(gocni.WithPluginConfDir(CNIConfDir),
+// 		gocni.WithPluginDir([]string{CNIBinDir}))
 
-	if err != nil {
-		return nil, fmt.Errorf("error initializing cni: %s", err)
-	}
+// 	if err != nil {
+// 		return nil, fmt.Errorf("error initializing cni: %s", err)
+// 	}
 
-	// Load the cni configuration
-	if err := cni.Load(gocni.WithLoNetwork, gocni.WithConfListFile(filepath.Join(CNIConfDir, defaultCNIConfFilename))); err != nil {
-		return nil, fmt.Errorf("failed to load cni configuration: %v", err)
-	}
+// 	// Load the cni configuration
+// 	if err := cni.Load(gocni.WithLoNetwork, gocni.WithConfListFile(filepath.Join(CNIConfDir, defaultCNIConfFilename))); err != nil {
+// 		return nil, fmt.Errorf("failed to load cni configuration: %v", err)
+// 	}
 
-	return cni, nil
-}
+// 	return cni, nil
+// }
 
 // CreateCNINetwork creates a CNI network interface and attaches it to the context
 func CreateCNINetwork(ctx context.Context, cni gocni.CNI, task containerd.Task, labels map[string]string) (*gocni.CNIResult, error) {

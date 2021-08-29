@@ -18,5 +18,5 @@ message TaskRequest {
 message TaskResponse {
   string message = 1;
   bytes response = 2;
-  repeated string responses = 3;
+  repeated bytes responses = 3;
 }
