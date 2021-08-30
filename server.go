@@ -21,6 +21,8 @@ type FileName struct {
 	fileName string `uri:"fileName" binding:"required"`
 }
 
+var serverProxy *Server
+
 func (s *Server) Run() {
 	addr := "127.0.0.1:" + s.Port
 	fmt.Printf("Proxy runs on address: %s \n ", addr)
@@ -95,6 +97,6 @@ func (s *Server) NetworkRequests(c *gin.Context) {
 
 func RunProxy(port string) {
 	Cache, _ = lru.New(FileCacheSize)
-	server := &Server{Engine: gin.New(), Port: port, Cache: Cache}
-	server.Run()
+	serverProxy = &Server{Engine: gin.New(), Port: port, Cache: Cache}
+	serverProxy.Run()
 }

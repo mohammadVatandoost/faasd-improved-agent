@@ -32,6 +32,7 @@ const (
 	FileCacheSize        = 5
 	UseCache             = true
 	SupportCacheChecking = true
+	FileCaching          = true
 )
 
 type Function struct {
@@ -63,14 +64,21 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		if SupportCacheChecking {
 			log.Printf("New Task checking cache, len(requests): %v", len(in.RequestHashes))
 			for i, reqHash := range in.RequestHashes {
-				value, found := Cache.Get(reqHash)
-				if found {
-					res.Responses[i] = value.([]byte)
+				if FileCaching {
+					_, found := serverProxy.Cache.Get(reqHash)
+					if found {
+						res.Responses[i] = make([]byte, 5)
+					}
+				} else {
+					value, found := Cache.Get(reqHash)
+					if found {
+						res.Responses[i] = value.([]byte)
+					}
 				}
+
 			}
 			return res, nil
 		}
-
 	}
 	log.Printf("New Task Received: %v", in.FunctionName)
 	var sReqHash string
