@@ -29,6 +29,7 @@ import (
 const (
 	port                 = ":50051"
 	MaxCacheItem         = 8
+	FileCacheSize        = 5
 	UseCache             = true
 	SupportCacheChecking = true
 )
