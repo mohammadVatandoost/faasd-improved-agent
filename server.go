@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
+	"strconv"
+	"sync/atomic"
 
 	"github.com/fanap-infra/log"
 	"github.com/gin-gonic/gin"
@@ -12,9 +14,10 @@ import (
 )
 
 type Server struct {
-	Engine *gin.Engine
-	Port   string
-	Cache  *lru.Cache
+	Engine   *gin.Engine
+	Port     string
+	Cache    *lru.Cache
+	CacheHit uint64
 }
 
 type FileName struct {
@@ -24,7 +27,7 @@ type FileName struct {
 var serverProxy *Server
 
 func (s *Server) Run() {
-	addr := "127.0.0.1:" + s.Port
+	addr := "0.0.0.0:" + s.Port
 	fmt.Printf("Proxy runs on address: %s \n ", addr)
 
 	s.Engine.GET("/assets/images/:fileName", s.NetworkRequests)
@@ -43,13 +46,14 @@ func (s *Server) Run() {
 
 func (s *Server) NetworkRequests(c *gin.Context) {
 	var fileName FileName
-	if err := c.ShouldBindUri(&fileName); err != nil {
-		fmt.Println("Error it is not valid request, err:", err.Error())
-		return
-	}
+	// if err := c.ShouldBindUri(&fileName); err != nil {
+	// 	fmt.Println("Error it is not valid request, err:", err.Error())
+	// 	return
+	// }
+	fileName.fileName = c.Param("fileName")
 
-	fmt.Println("fileName Request:", fileName.fileName)
-	fileName.fileName = "I1.jpg"
+	fmt.Println("******* fileName Request:", fileName.fileName)
+	// fileName.fileName = "I1.jpg"
 	// director := func(req *http.Request) {
 	// 	r := c.Request
 	// 	req.URL.Scheme = "http"
@@ -65,7 +69,9 @@ func (s *Server) NetworkRequests(c *gin.Context) {
 	res, found := s.Cache.Get(fileName.fileName)
 
 	if found {
-		fmt.Println("find in cache, fileName:", fileName.fileName)
+		atomic.AddUint64(&s.CacheHit, 1)
+		fmt.Printf("find in cache, fileName: %v, CacheHit: %v \n", fileName.fileName, s.CacheHit)
+
 		c.Header("Content-Description", "File Transfer")
 		c.Header("Content-Transfer-Encoding", "binary")
 		c.Header("Content-Disposition", "attachment; filename="+filepath.Base(fileName.fileName))
@@ -96,7 +102,31 @@ func (s *Server) NetworkRequests(c *gin.Context) {
 }
 
 func RunProxy(port string) {
+	// GetSizeOfFiles()
 	Cache, _ = lru.New(FileCacheSize)
-	serverProxy = &Server{Engine: gin.New(), Port: port, Cache: Cache}
+	serverProxy = &Server{Engine: gin.New(), Port: port, Cache: Cache, CacheHit: 0}
 	serverProxy.Run()
+}
+
+func GetSizeOfFiles() {
+	counter := 11
+	for {
+		fileAddress := "http://mvatandoosts.ir/assets/images/I" + strconv.Itoa(counter) + ".jpg"
+		resp, err := http.Get(fileAddress)
+		if err != nil {
+			fmt.Println("can not get request value, err:", err.Error())
+			return
+		}
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println("can not get read value, err:", err.Error())
+			return
+		}
+		fmt.Printf("fileName:= %v, fileSize: %v \n", fileAddress, len(body))
+		counter++
+		if counter > 30 {
+			break
+		}
+	}
 }
