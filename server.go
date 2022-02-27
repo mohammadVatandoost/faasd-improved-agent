@@ -37,6 +37,20 @@ func (s *Server) Run() {
 		Handler: s.Engine,
 	}
 
+	// images := []string{"I1.jpg", "I2.jpg", "I3.jpg", "I4.jpg", "I5.jpg"}
+	// sumTime := int64(0)
+	// for _, img := range images {
+	// 	t1 := time.Now()
+	// 	_, err := http.Get("http://mvatandoosts.ir/assets/images/" + img)
+	// 	if err != nil {
+	// 		fmt.Println("can not get request value, err:", err.Error())
+	// 		return
+	// 	}
+	// 	sumTime = sumTime + time.Now().Sub(t1).Milliseconds()
+	// 	fmt.Printf("get file time: %v \n", time.Now().Sub(t1).Milliseconds())
+	// }
+	// fmt.Printf("sumTime: %v \n", sumTime/int64(len(images)))
+
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorv("Error on listen HTTP Server", "error", err)

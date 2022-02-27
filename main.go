@@ -32,7 +32,7 @@ import (
 
 const (
 	port                 = ":50051"
-	MaxCacheItem         = 9
+	MaxCacheItem         = 4
 	FileCacheSize        = 4
 	UseCache             = true
 	SupportCacheChecking = false
@@ -63,9 +63,21 @@ var Cache *lru.Cache
 var mutex sync.Mutex
 var cacheHit uint64
 var cacheMiss uint
+var cacheHitFault int64
+var cacheHitRequests int64
+var totalReceiveNetworkTime int64
+var totalExecutionTime int64
+var numberOfTasks int64
+var numberOfReadFile int64
 
 // SayHello implements helloworld.GreeterServer
 func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskResponse, error) {
+	receivingNetworkDelay := time.Now().UnixNano() - in.TimeNanoSecond
+	atomic.AddInt64(&numberOfTasks, 1)
+
+	if in.CacheHit {
+		atomic.AddInt64(&cacheHitRequests, 1)
+	}
 
 	if len(in.RequestHashes) > 0 {
 		res := &pb.TaskResponse{Message: "OK", Responses: make([][]byte, len(in.RequestHashes))}
@@ -95,7 +107,9 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 			return res, nil
 		}
 	}
-	log.Printf("New Task Received: %v", in.FunctionName)
+	atomic.AddInt64(&totalReceiveNetworkTime, receivingNetworkDelay)
+	log.Printf("New Task Received: %v, totalReceiveNetworkTime: %v, numberOfTasks: %v, receivingNetworkDelay: %v",
+		in.FunctionName, totalReceiveNetworkTime, numberOfTasks, receivingNetworkDelay)
 	var sReqHash string
 	var fInputs string
 	req, err := unserializeReq(in.SerializeReq)
@@ -116,11 +130,17 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		sReqHash = hash(append([]byte(in.FunctionName), bodyBytes...))
 		mutex.Lock()
 		res, found := Cache.Get(sReqHash)
+
 		if found {
 			cacheHit++
 			mutex.Unlock()
-			log.Printf("Found in cache: %v, cacheHit: %v", in.FunctionName, cacheHit)
+			log.Printf("Found in cache: %v, cacheHit: %v, cacheHitFault: %v, cacheHitRequests: %v",
+				in.FunctionName, cacheHit, cacheHitFault, cacheHitRequests)
 			return &pb.TaskResponse{Message: "OK", Response: res.([]byte)}, nil
+		}
+
+		if in.CacheHit {
+			cacheHitFault++
 		}
 
 		mutex.Unlock()
@@ -184,15 +204,16 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 		seconds = time.Since(start)
 		// function.CloseChannel <- struct{}{}
 		if err != nil {
-			log.Printf("error with proxy %s request to: %s, %s\n", in.FunctionName, proxyReq.URL.String(), err.Error())
+			log.Printf("error with proxy %s request to: %s, %s, seconds: %v\n", in.FunctionName,
+				proxyReq.URL.String(), err.Error(), seconds.Seconds())
 			tryCounter++
 			if tryCounter > 2 {
-				log.Printf("****** Second TIme error with proxy %s request to: %s, err:%s, bodyBytes: %s\n",
-					in.FunctionName, proxyReq.URL.String(), err.Error(), fInputs)
+				log.Printf("****** Second TIme error with proxy %s request to: %s, err:%s, bodyBytes: %s, seconds: %v \n",
+					in.FunctionName, proxyReq.URL.String(), err.Error(), fInputs, seconds.Seconds())
 				return nil, err
 			}
 			// defer response.Body.Close()
-			time.Sleep(50 * time.Millisecond)
+			// time.Sleep(50 * time.Millisecond)
 			continue
 		}
 		defer response.Body.Close()
@@ -212,15 +233,18 @@ func (s *server) TaskAssign(ctx context.Context, in *pb.TaskRequest) (*pb.TaskRe
 
 		break
 	}
-
+	atomic.AddInt64(&totalExecutionTime, seconds.Milliseconds())
+	if in.FunctionName == "face-detect-pigo" || in.FunctionName == "face-blur" {
+		atomic.AddInt64(&numberOfReadFile, 1)
+	}
 	// *************** cache
 	if UseCache && !FileCaching {
 		mutex.Lock()
 		Cache.Add(sReqHash, sRes)
 		mutex.Unlock()
 		cacheMiss++
-		log.Printf("Mohammad %s took %f seconds, sRes length: %v, cacheMiss : %v, sReqHash : %v \n",
-			in.FunctionName, seconds.Seconds(), len(sRes), cacheMiss, sReqHash)
+		log.Printf("Mohammad %s took %f seconds, sRes length: %v, cacheMiss : %v, sReqHash : %v, totalExecutionTime: %v, numberOfReadFile: %v, cacheHitFault: %v, , cacheHitRequests: %v \n",
+			in.FunctionName, seconds.Seconds(), len(sRes), cacheMiss, sReqHash, totalExecutionTime, numberOfReadFile, cacheHitFault, cacheHitRequests)
 	}
 
 	if WriteToCSV {
